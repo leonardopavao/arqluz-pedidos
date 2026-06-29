@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migração — Arq Luz Pedidos</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-card" style="max-width:520px;">
+    <div class="login-mark">
+      <div class="login-bulb"></div>
+      <h1>Migração de dados<span>Traz entregas/visitas antigas para "tarefas"</span></h1>
+    </div>
+    <p style="color:var(--text-dim); font-size:13.5px; line-height:1.6;">
+      Essa página lê o que estiver nas coleções antigas <code>entregas</code> e
+      <code>visitasObra</code> e copia para a coleção <code>tarefas</code>, sem apagar nada
+      do que já está em "tarefas" hoje. É seguro rodar mais de uma vez — itens já migrados
+      não duplicam.
+    </p>
+    <button class="btn-primary" id="btnMigrar" style="margin-top:10px;">Migrar dados antigos</button>
+    <div id="log" style="margin-top:18px; font-size:12.5px; color:var(--text-dim); white-space:pre-wrap; line-height:1.6;"></div>
+  </div>
+</div>
+
+<script type="module">
+import { auth, db } from "./js/firebase-config.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { collection, getDocs, addDoc, query, where, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const logBox = document.getElementById("log");
+function log(msg) { logBox.textContent += msg + "\n"; }
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) { window.location.href = "index.html"; }
+});
+
+document.getElementById("btnMigrar").addEventListener("click", async () => {
+  logBox.textContent = "";
+  log("Iniciando migração...");
+
+  // Evita duplicar: pega o que já existe em tarefas com campo _origemId
+  const tarefasSnap = await getDocs(collection(db, "tarefas"));
+  const jaMigrados = new Set(tarefasSnap.docs.map(d => d.data()._origemId).filter(Boolean));
+
+  // 1. Migra "entregas"
+  const entregasSnap = await getDocs(collection(db, "entregas"));
+  let countEnt = 0;
+  for (const docSnap of entregasSnap.docs) {
+    if (jaMigrados.has(docSnap.id)) continue;
+    const d = docSnap.data();
+    let status = d.status || "Novo";
+    if (status === "Em rota") status = "Separado"; // status antigo que não existe mais
+    await addDoc(collection(db, "tarefas"), {
+      tipo: "Entrega",
+      cliente: d.cliente || "",
+      telefone: d.telefone || "",
+      data: d.dataPrevista || "",
+      endereco: d.endereco || "",
+      bairro: d.bairro || "",
+      cidade: d.cidade || "",
+      porte: d.porte || "Média",
+      observacao: d.observacao || "",
+      responsavel: d.vendedor || d.responsavel || "",
+      status: status,
+      criadoEm: d.criadoEm || serverTimestamp(),
+      _origemId: docSnap.id,
+      _origemColecao: "entregas",
+    });
+    countEnt++;
+  }
+  log(`Entregas migradas: ${countEnt}`);
+
+  // 2. Migra "visitasObra"
+  const obraSnap = await getDocs(collection(db, "visitasObra"));
+  let countObra = 0;
+  for (const docSnap of obraSnap.docs) {
+    if (jaMigrados.has(docSnap.id)) continue;
+    const d = docSnap.data();
+    await addDoc(collection(db, "tarefas"), {
+      tipo: "Obra",
+      data: d.data || "",
+      saida: d.saida || "",
+      volta: d.volta || "",
+      motivo: d.motivo || "",
+      destino: d.destino || "",
+      clienteObra: d.clienteObra || "",
+      observacao: d.observacao || "",
+      responsavel: d.responsavel || "",
+      status: d.status || "Agendada",
+      criadoEm: d.criadoEm || serverTimestamp(),
+      _origemId: docSnap.id,
+      _origemColecao: "visitasObra",
+    });
+    countObra++;
+  }
+  log(`Visitas em obra migradas: ${countObra}`);
+  log("\nPronto! Pode voltar para a aba Tarefas e conferir.");
+});
+</script>
+</body>
+</html>
