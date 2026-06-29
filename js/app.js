@@ -14,7 +14,7 @@ const LAST_SEEN_KEY = "arqluz_pedidos_last_seen";
 
 // Fluxo de status por tipo de tarefa
 const STATUS_FLOWS = {
-  Entrega: ["Novo", "Visto", "Em rota", "Entregue"],
+  Entrega: ["Novo", "Visto", "Em separação", "Separado", "Entregue"],
   Obra: ["Agendada", "Em andamento", "Concluída"],
   Retirada: ["Novo", "Pronto para retirada", "Retirado"],
 };
