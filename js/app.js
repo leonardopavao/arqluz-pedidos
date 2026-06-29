@@ -107,6 +107,7 @@ onSnapshot(query(entregasRef, orderBy("criadoEm", "desc")), (snap) => {
   entregasCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   document.getElementById("countEntregas").textContent = entregasCache.filter((e) => e.status !== "Entregue").length;
   renderEntregas();
+  renderHistorico();
 });
 
 document.getElementById("filtrosEntrega").addEventListener("click", (e) => {
@@ -120,9 +121,11 @@ document.getElementById("filtrosEntrega").addEventListener("click", (e) => {
 
 function renderEntregas() {
   const lista = document.getElementById("listaEntregas");
+  // Entregas já entregues saem da lista principal e vão para a aba Histórico
+  const ativas = entregasCache.filter((e) => e.status !== "Entregue");
   const itens = filtroEntregaAtual === "todos"
-    ? entregasCache
-    : entregasCache.filter((e) => e.status === filtroEntregaAtual);
+    ? ativas
+    : ativas.filter((e) => e.status === filtroEntregaAtual);
 
   if (itens.length === 0) {
     lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nenhuma entrega aqui ainda.</p></div>`;
@@ -197,6 +200,7 @@ onSnapshot(query(obraRef, orderBy("criadoEm", "desc")), (snap) => {
   obraCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   document.getElementById("countObra").textContent = obraCache.filter((o) => o.status !== "Concluída").length;
   renderObra();
+  renderHistorico();
 });
 
 document.getElementById("filtrosObra").addEventListener("click", (e) => {
@@ -210,7 +214,9 @@ document.getElementById("filtrosObra").addEventListener("click", (e) => {
 
 function renderObra() {
   const lista = document.getElementById("listaObra");
-  const itens = filtroObraAtual === "todos" ? obraCache : obraCache.filter((o) => o.status === filtroObraAtual);
+  // Visitas concluídas saem da lista principal e vão para a aba Histórico
+  const ativas = obraCache.filter((o) => o.status !== "Concluída");
+  const itens = filtroObraAtual === "todos" ? ativas : ativas.filter((o) => o.status === filtroObraAtual);
 
   if (itens.length === 0) {
     lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nenhuma visita registrada ainda.</p></div>`;
@@ -241,6 +247,67 @@ function renderObra() {
       await registrarNotificacao(`${currentUser.nome} atualizou a visita para "${sel.value}"`);
     });
   });
+}
+
+/* ===================== HISTÓRICO ===================== */
+let filtroHistoricoAtual = "todos";
+
+document.getElementById("filtrosHistorico").addEventListener("click", (e) => {
+  const chip = e.target.closest(".filter-chip");
+  if (!chip) return;
+  document.querySelectorAll("#filtrosHistorico .filter-chip").forEach((c) => c.classList.remove("active"));
+  chip.classList.add("active");
+  filtroHistoricoAtual = chip.dataset.tipo;
+  renderHistorico();
+});
+
+function renderHistorico() {
+  const lista = document.getElementById("listaHistorico");
+  if (!lista) return;
+
+  const entregasFeitas = entregasCache
+    .filter((e) => e.status === "Entregue")
+    .map((e) => ({ ...e, _tipo: "entrega" }));
+  const obraFeitas = obraCache
+    .filter((o) => o.status === "Concluída")
+    .map((o) => ({ ...o, _tipo: "obra" }));
+
+  let itens = [...entregasFeitas, ...obraFeitas];
+  if (filtroHistoricoAtual !== "todos") itens = itens.filter((i) => i._tipo === filtroHistoricoAtual);
+
+  itens.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+
+  document.getElementById("countHistorico").textContent = entregasFeitas.length + obraFeitas.length;
+
+  if (itens.length === 0) {
+    lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nada no histórico ainda.</p></div>`;
+    return;
+  }
+
+  lista.innerHTML = itens.map((it) => {
+    if (it._tipo === "entrega") {
+      const porteClasse = it.porte === "Pequena" ? "pequena" : it.porte === "Média" ? "media" : "grande";
+      return `
+        <div class="item-card" style="grid-template-columns: auto 1fr auto;">
+          <div class="porte-bulb ${porteClasse}" title="Porte: ${it.porte}"></div>
+          <div class="item-main">
+            <div class="cliente">${escapeHtml(it.cliente)}</div>
+            <div class="meta">${[it.endereco, it.bairro, it.cidade].filter(Boolean).join(" · ") || "Endereço não informado"} ${it.dataPrevista ? "· " + formatarData(it.dataPrevista) : ""}</div>
+            <div class="tags"><span class="tag">Entrega</span><span class="tag">${escapeHtml(it.vendedor)}</span></div>
+          </div>
+          <div class="item-actions"><span class="status-badge status-entregue">Entregue</span></div>
+        </div>`;
+    }
+    return `
+      <div class="item-card" style="grid-template-columns: 1fr auto;">
+        <div class="item-main">
+          <div class="cliente">${escapeHtml(it.destino || it.motivo)}</div>
+          <div class="meta">${escapeHtml(it.motivo)} ${it.clienteObra ? "· " + escapeHtml(it.clienteObra) : ""} ${it.data ? "· " + formatarData(it.data) : ""}</div>
+          <div class="tags"><span class="tag">Visita</span><span class="tag">${escapeHtml(it.responsavel)}</span></div>
+        </div>
+        <div class="item-actions"><span class="status-badge status-concluida">Concluída</span></div>
+      </div>`;
+  }).join("");
 }
 
 /* ===================== NOTIFICAÇÕES ===================== */
