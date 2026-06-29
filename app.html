@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arq Luz · Pedidos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="app-brand">
+    <div class="login-bulb"></div>
+    <h1>Arq Luz · Pedidos</h1>
+  </div>
+  <div class="header-right">
+    <button class="bell-btn" id="bellBtn" title="Notificações">
+      🔔
+      <span class="bell-dot" id="bellDot">0</span>
+    </button>
+    <div class="user-pill">
+      <span class="nome" id="userNome">—</span>
+      <span class="papel" id="userPapel">—</span>
+    </div>
+    <button class="logout-btn" id="logoutBtn">Sair</button>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="entregas">Entregas <span class="tab-count" id="countEntregas">0</span></button>
+  <button class="tab-btn" data-tab="obra">Visita em obra <span class="tab-count" id="countObra">0</span></button>
+  <button class="tab-btn" data-tab="notificacoes">Notificações <span class="tab-count" id="countNotif">0</span></button>
+</nav>
+
+<!-- ===== ENTREGAS ===== -->
+<section class="tab-panel active" id="panel-entregas">
+  <div class="panel-body">
+    <div class="panel-toolbar">
+      <h2>Pedidos de entrega</h2>
+      <button class="btn-new" id="btnNovaEntrega">+ Nova entrega</button>
+    </div>
+    <div class="filter-row" id="filtrosEntrega">
+      <button class="filter-chip active" data-status="todos">Todos</button>
+      <button class="filter-chip" data-status="Novo">Novo</button>
+      <button class="filter-chip" data-status="Visto">Visto</button>
+      <button class="filter-chip" data-status="Em rota">Em rota</button>
+      <button class="filter-chip" data-status="Entregue">Entregue</button>
+    </div>
+    <div class="card-list" id="listaEntregas"></div>
+  </div>
+</section>
+
+<!-- ===== VISITA EM OBRA ===== -->
+<section class="tab-panel" id="panel-obra">
+  <div class="panel-body">
+    <div class="panel-toolbar">
+      <h2>Visitas em obra (uso do carro)</h2>
+      <button class="btn-new" id="btnNovaObra">+ Nova visita</button>
+    </div>
+    <div class="filter-row" id="filtrosObra">
+      <button class="filter-chip active" data-status="todos">Todos</button>
+      <button class="filter-chip" data-status="Agendada">Agendada</button>
+      <button class="filter-chip" data-status="Em andamento">Em andamento</button>
+      <button class="filter-chip" data-status="Concluída">Concluída</button>
+    </div>
+    <div class="card-list" id="listaObra"></div>
+  </div>
+</section>
+
+<!-- ===== NOTIFICAÇÕES ===== -->
+<section class="tab-panel" id="panel-notificacoes">
+  <div class="panel-body">
+    <div class="panel-toolbar">
+      <h2>Notificações recentes</h2>
+    </div>
+    <div id="listaNotificacoes"></div>
+  </div>
+</section>
+
+<!-- ===== MODAL: NOVA ENTREGA ===== -->
+<div class="modal-backdrop" id="modalEntrega">
+  <div class="modal-box">
+    <h3>Nova entrega</h3>
+    <form id="formEntrega">
+      <div class="field">
+        <label>Cliente *</label>
+        <input type="text" id="ent_cliente" required>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Telefone</label>
+          <input type="text" id="ent_telefone" placeholder="17 99999-9999">
+        </div>
+        <div class="field">
+          <label>Data prevista *</label>
+          <input type="date" id="ent_data" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Endereço</label>
+        <input type="text" id="ent_endereco">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Bairro</label>
+          <input type="text" id="ent_bairro">
+        </div>
+        <div class="field">
+          <label>Cidade</label>
+          <input type="text" id="ent_cidade" value="Votuporanga">
+        </div>
+      </div>
+      <div class="field">
+        <label>Porte da entrega *</label>
+        <div class="porte-options" id="ent_porte_options">
+          <label class="porte-opt sel-pequena" data-porte="Pequena"><input type="radio" name="ent_porte" value="Pequena"><div class="dot"></div>Pequena</label>
+          <label class="porte-opt sel-media" data-porte="Média"><input type="radio" name="ent_porte" value="Média"><div class="dot"></div>Média</label>
+          <label class="porte-opt sel-grande" data-porte="Grande"><input type="radio" name="ent_porte" value="Grande"><div class="dot"></div>Grande</label>
+        </div>
+      </div>
+      <div class="field">
+        <label>Observação</label>
+        <textarea id="ent_obs" placeholder="Ex: ligar antes de ir, eletricista vem retirar, etc."></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close="modalEntrega">Cancelar</button>
+        <button type="submit" class="btn-primary" style="width:auto;">Cadastrar entrega</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== MODAL: NOVA VISITA EM OBRA ===== -->
+<div class="modal-backdrop" id="modalObra">
+  <div class="modal-box">
+    <h3>Nova visita em obra</h3>
+    <form id="formObra">
+      <div class="field-row">
+        <div class="field">
+          <label>Data *</label>
+          <input type="date" id="obra_data" required>
+        </div>
+        <div class="field">
+          <label>Saída prevista</label>
+          <input type="time" id="obra_saida">
+        </div>
+      </div>
+      <div class="field">
+        <label>Motivo *</label>
+        <input type="text" id="obra_motivo" placeholder="Ex: entrega de mercadoria, visita técnica..." required>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Destino *</label>
+          <input type="text" id="obra_destino" required>
+        </div>
+        <div class="field">
+          <label>Volta prevista</label>
+          <input type="time" id="obra_volta">
+        </div>
+      </div>
+      <div class="field">
+        <label>Cliente / obra</label>
+        <input type="text" id="obra_cliente">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" data-close="modalObra">Cancelar</button>
+        <button type="submit" class="btn-primary" style="width:auto;">Cadastrar visita</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
