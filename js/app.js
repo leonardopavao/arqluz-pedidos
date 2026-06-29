@@ -5,33 +5,30 @@ import {
   collection, addDoc, onSnapshot, query, orderBy, doc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Webhook opcional do Make.com para avisar no WhatsApp quando uma entrega nova é cadastrada.
+// Webhook opcional do Make.com para avisar no WhatsApp quando uma tarefa nova é cadastrada.
 // Deixe em branco por enquanto — a notificação dentro do site já funciona sem isso.
-// Quando quiser ativar: crie um cenário no Make com gatilho "Webhooks > Custom webhook",
-// cole a URL gerada aqui, e ligue a um módulo Z-API de envio de WhatsApp.
 const MAKE_WEBHOOK_URL = "";
 
 let currentUser = null; // { email, nome, papel }
-
 const LAST_SEEN_KEY = "arqluz_pedidos_last_seen";
+
+// Fluxo de status por tipo de tarefa
+const STATUS_FLOWS = {
+  Entrega: ["Novo", "Visto", "Em rota", "Entregue"],
+  Obra: ["Agendada", "Em andamento", "Concluída"],
+  Retirada: ["Novo", "Pronto para retirada", "Retirado"],
+};
+const STATUS_FINAL = { Entrega: "Entregue", Obra: "Concluída", Retirada: "Retirado" };
+const TIPO_ICONE = { Entrega: "📦", Obra: "🚗", Retirada: "🏬" };
 
 /* ===================== AUTENTICAÇÃO ===================== */
 onAuthStateChanged(auth, (user) => {
-  if (!user) {
-    window.location.href = "index.html";
-    return;
-  }
+  if (!user) { window.location.href = "index.html"; return; }
   const dados = USUARIOS[user.email];
-  if (!dados) {
-    // E-mail autenticado mas não cadastrado na lista de usuários do app
-    signOut(auth);
-    window.location.href = "index.html";
-    return;
-  }
+  if (!dados) { signOut(auth); window.location.href = "index.html"; return; }
   currentUser = { email: user.email, nome: dados.nome, papel: dados.papel };
   document.getElementById("userNome").textContent = currentUser.nome;
   document.getElementById("userPapel").textContent = currentUser.papel;
-  iniciarApp();
 });
 
 document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
@@ -47,12 +44,11 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   });
 });
 
-/* ===================== MODAIS ===================== */
+/* ===================== MODAL ===================== */
 function abrirModal(id) { document.getElementById(id).classList.add("show"); }
 function fecharModal(id) { document.getElementById(id).classList.remove("show"); }
 
-document.getElementById("btnNovaEntrega").addEventListener("click", () => abrirModal("modalEntrega"));
-document.getElementById("btnNovaObra").addEventListener("click", () => abrirModal("modalObra"));
+document.getElementById("btnNovaTarefa").addEventListener("click", () => abrirModal("modalTarefa"));
 document.querySelectorAll("[data-close]").forEach((btn) => {
   btn.addEventListener("click", () => fecharModal(btn.dataset.close));
 });
@@ -60,197 +56,117 @@ document.querySelectorAll(".modal-backdrop").forEach((bg) => {
   bg.addEventListener("click", (e) => { if (e.target === bg) bg.classList.remove("show"); });
 });
 
-// Seleção visual do porte (Pequena / Média / Grande)
-document.querySelectorAll("#ent_porte_options .porte-opt").forEach((label) => {
+// Seleção de porte (estilo botão)
+document.querySelectorAll("#porte_options .porte-opt").forEach((label) => {
   label.addEventListener("click", () => {
-    document.querySelectorAll("#ent_porte_options .porte-opt").forEach((l) => l.classList.remove("checked"));
+    document.querySelectorAll("#porte_options .porte-opt").forEach((l) => l.classList.remove("checked"));
     label.classList.add("checked");
     label.querySelector("input").checked = true;
   });
 });
 
-/* ===================== ENTREGAS ===================== */
-const entregasRef = collection(db, "entregas");
-let entregasCache = [];
-let filtroEntregaAtual = "todos";
-
-document.getElementById("formEntrega").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const porteInput = document.querySelector('input[name="ent_porte"]:checked');
-  if (!porteInput) { alert("Selecione o porte da entrega."); return; }
-
-  const dados = {
-    cliente: document.getElementById("ent_cliente").value.trim(),
-    telefone: document.getElementById("ent_telefone").value.trim(),
-    dataPrevista: document.getElementById("ent_data").value,
-    endereco: document.getElementById("ent_endereco").value.trim(),
-    bairro: document.getElementById("ent_bairro").value.trim(),
-    cidade: document.getElementById("ent_cidade").value.trim(),
-    porte: porteInput.value,
-    observacao: document.getElementById("ent_obs").value.trim(),
-    status: "Novo",
-    vendedor: currentUser.nome,
-    vendedorEmail: currentUser.email,
-    criadoEm: serverTimestamp(),
-  };
-
-  await addDoc(entregasRef, dados);
-  await registrarNotificacao(`${currentUser.nome} cadastrou uma entrega para ${dados.cliente} — porte ${dados.porte}`);
-  notificarWhatsApp(`📦 Nova entrega cadastrada por ${currentUser.nome}\nCliente: ${dados.cliente}\nPorte: ${dados.porte}\nData prevista: ${formatarData(dados.dataPrevista)}`);
-
-  e.target.reset();
-  document.querySelectorAll("#ent_porte_options .porte-opt").forEach((l) => l.classList.remove("checked"));
-  fecharModal("modalEntrega");
-});
-
-onSnapshot(query(entregasRef, orderBy("criadoEm", "desc")), (snap) => {
-  entregasCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  document.getElementById("countEntregas").textContent = entregasCache.filter((e) => e.status !== "Entregue").length;
-  renderEntregas();
-  renderHistorico();
-});
-
-document.getElementById("filtrosEntrega").addEventListener("click", (e) => {
-  const chip = e.target.closest(".filter-chip");
-  if (!chip) return;
-  document.querySelectorAll("#filtrosEntrega .filter-chip").forEach((c) => c.classList.remove("active"));
-  chip.classList.add("active");
-  filtroEntregaAtual = chip.dataset.status;
-  renderEntregas();
-});
-
-function renderEntregas() {
-  const lista = document.getElementById("listaEntregas");
-  // Entregas já entregues saem da lista principal e vão para a aba Histórico
-  const ativas = entregasCache.filter((e) => e.status !== "Entregue");
-  const itens = filtroEntregaAtual === "todos"
-    ? ativas
-    : ativas.filter((e) => e.status === filtroEntregaAtual);
-
-  if (itens.length === 0) {
-    lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nenhuma entrega aqui ainda.</p></div>`;
-    return;
-  }
-
-  const podeAtualizarStatus = currentUser.papel === "estoque" || currentUser.papel === "admin";
-
-  lista.innerHTML = itens.map((it) => {
-    const porteClasse = it.porte === "Pequena" ? "pequena" : it.porte === "Média" ? "media" : "grande";
-    const statusClasse = "status-" + it.status.toLowerCase().replace(/\s/g, "");
-    const acoes = podeAtualizarStatus
-      ? `<select class="status-select" data-id="${it.id}" data-col="entregas">
-          ${["Novo","Visto","Em rota","Entregue"].map((s) => `<option value="${s}" ${s === it.status ? "selected" : ""}>${s}</option>`).join("")}
-        </select>`
-      : `<span class="status-badge ${statusClasse}">${it.status}</span>`;
-
-    return `
-      <div class="item-card">
-        <div class="porte-bulb ${porteClasse}" title="Porte: ${it.porte}"></div>
-        <div class="item-main">
-          <div class="cliente">${escapeHtml(it.cliente)}</div>
-          <div class="meta">${[it.endereco, it.bairro, it.cidade].filter(Boolean).join(" · ") || "Endereço não informado"} ${it.dataPrevista ? "· " + formatarData(it.dataPrevista) : ""}</div>
-          ${it.observacao ? `<div class="obs">${escapeHtml(it.observacao)}</div>` : ""}
-          <div class="tags">
-            <span class="tag">${escapeHtml(it.vendedor)}</span>
-            ${it.telefone ? `<span class="tag">${escapeHtml(it.telefone)}</span>` : ""}
-          </div>
-        </div>
-        <div class="item-actions">${acoes}</div>
-      </div>`;
-  }).join("");
-
-  if (podeAtualizarStatus) {
-    lista.querySelectorAll(".status-select").forEach((sel) => {
-      sel.addEventListener("change", async () => {
-        await updateDoc(doc(db, "entregas", sel.dataset.id), { status: sel.value });
-        await registrarNotificacao(`${currentUser.nome} atualizou a entrega para "${sel.value}"`);
-      });
-    });
-  }
-}
-
-/* ===================== VISITA EM OBRA ===================== */
-const obraRef = collection(db, "visitasObra");
-let obraCache = [];
-let filtroObraAtual = "todos";
-
-document.getElementById("formObra").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const dados = {
-    data: document.getElementById("obra_data").value,
-    saida: document.getElementById("obra_saida").value,
-    volta: document.getElementById("obra_volta").value,
-    motivo: document.getElementById("obra_motivo").value.trim(),
-    destino: document.getElementById("obra_destino").value.trim(),
-    clienteObra: document.getElementById("obra_cliente").value.trim(),
-    responsavel: currentUser.nome,
-    status: "Agendada",
-    criadoEm: serverTimestamp(),
-  };
-
-  await addDoc(obraRef, dados);
-  await registrarNotificacao(`${currentUser.nome} agendou uma visita em obra — ${dados.destino || dados.motivo}`);
-  notificarWhatsApp(`🚗 Visita em obra agendada por ${currentUser.nome}\nDestino: ${dados.destino}\nMotivo: ${dados.motivo}\nData: ${formatarData(dados.data)}`);
-
-  e.target.reset();
-  fecharModal("modalObra");
-});
-
-onSnapshot(query(obraRef, orderBy("criadoEm", "desc")), (snap) => {
-  obraCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  document.getElementById("countObra").textContent = obraCache.filter((o) => o.status !== "Concluída").length;
-  renderObra();
-  renderHistorico();
-});
-
-document.getElementById("filtrosObra").addEventListener("click", (e) => {
-  const chip = e.target.closest(".filter-chip");
-  if (!chip) return;
-  document.querySelectorAll("#filtrosObra .filter-chip").forEach((c) => c.classList.remove("active"));
-  chip.classList.add("active");
-  filtroObraAtual = chip.dataset.status;
-  renderObra();
-});
-
-function renderObra() {
-  const lista = document.getElementById("listaObra");
-  // Visitas concluídas saem da lista principal e vão para a aba Histórico
-  const ativas = obraCache.filter((o) => o.status !== "Concluída");
-  const itens = filtroObraAtual === "todos" ? ativas : ativas.filter((o) => o.status === filtroObraAtual);
-
-  if (itens.length === 0) {
-    lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nenhuma visita registrada ainda.</p></div>`;
-    return;
-  }
-
-  lista.innerHTML = itens.map((it) => {
-    const statusClasse = "status-" + it.status.toLowerCase().replace(/\s/g, "");
-    const horario = [it.saida, it.volta].filter(Boolean).map((h, i) => i === 0 ? `saída ${h}` : `volta ${h}`).join(" · ");
-    return `
-      <div class="item-card" style="grid-template-columns: 1fr auto;">
-        <div class="item-main">
-          <div class="cliente">${escapeHtml(it.destino || it.motivo)}</div>
-          <div class="meta">${escapeHtml(it.motivo)} ${it.clienteObra ? "· " + escapeHtml(it.clienteObra) : ""} ${it.data ? "· " + formatarData(it.data) : ""} ${horario ? "· " + horario : ""}</div>
-          <div class="tags"><span class="tag">${escapeHtml(it.responsavel)}</span></div>
-        </div>
-        <div class="item-actions">
-          <select class="status-select" data-id="${it.id}">
-            ${["Agendada","Em andamento","Concluída"].map((s) => `<option value="${s}" ${s === it.status ? "selected" : ""}>${s}</option>`).join("")}
-          </select>
-        </div>
-      </div>`;
-  }).join("");
-
-  lista.querySelectorAll(".status-select").forEach((sel) => {
-    sel.addEventListener("change", async () => {
-      await updateDoc(doc(db, "visitasObra", sel.dataset.id), { status: sel.value });
-      await registrarNotificacao(`${currentUser.nome} atualizou a visita para "${sel.value}"`);
-    });
+// Seleção de tipo de tarefa -> mostra/esconde os grupos de campo relevantes
+let tipoSelecionado = null;
+document.querySelectorAll("#tipo_options .porte-opt").forEach((label) => {
+  label.addEventListener("click", () => {
+    document.querySelectorAll("#tipo_options .porte-opt").forEach((l) => l.classList.remove("checked"));
+    label.classList.add("checked");
+    label.querySelector("input").checked = true;
+    tipoSelecionado = label.dataset.tipo;
+    atualizarCamposVisiveis();
   });
+});
+
+function atualizarCamposVisiveis() {
+  const grupoCliente = document.getElementById("grupo_cliente");
+  const grupoEntrega = document.getElementById("grupo_entrega");
+  const grupoObra = document.getElementById("grupo_obra");
+
+  grupoCliente.hidden = !(tipoSelecionado === "Entrega" || tipoSelecionado === "Retirada");
+  grupoEntrega.hidden = tipoSelecionado !== "Entrega";
+  grupoObra.hidden = tipoSelecionado !== "Obra";
+
+  document.getElementById("tf_cliente").required = grupoCliente.hidden ? false : true;
+  document.getElementById("tf_motivo").required = grupoObra.hidden ? false : true;
+  document.getElementById("tf_destino").required = grupoObra.hidden ? false : true;
 }
 
-/* ===================== HISTÓRICO ===================== */
+function resetarModalTarefa() {
+  document.getElementById("formTarefa").reset();
+  tipoSelecionado = null;
+  document.querySelectorAll("#tipo_options .porte-opt, #porte_options .porte-opt").forEach((l) => l.classList.remove("checked"));
+  atualizarCamposVisiveis();
+}
+
+/* ===================== FIRESTORE: TAREFAS ===================== */
+const tarefasRef = collection(db, "tarefas");
+let tarefasCache = [];
+let filtroTipoAtual = "todos";
 let filtroHistoricoAtual = "todos";
+
+document.getElementById("formTarefa").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!tipoSelecionado) { alert("Selecione o tipo da tarefa (Entrega, Visita em obra ou Retirada)."); return; }
+
+  const dados = {
+    tipo: tipoSelecionado,
+    data: document.getElementById("tf_data").value,
+    observacao: document.getElementById("tf_obs").value.trim(),
+    responsavel: currentUser.nome,
+    status: STATUS_FLOWS[tipoSelecionado][0],
+    criadoEm: serverTimestamp(),
+  };
+
+  if (tipoSelecionado === "Entrega" || tipoSelecionado === "Retirada") {
+    const porteInput = document.querySelector('input[name="tf_porte"]:checked');
+    if (!porteInput) { alert("Selecione o porte da mercadoria."); return; }
+    dados.cliente = document.getElementById("tf_cliente").value.trim();
+    dados.telefone = document.getElementById("tf_telefone").value.trim();
+    dados.porte = porteInput.value;
+  }
+
+  if (tipoSelecionado === "Entrega") {
+    dados.endereco = document.getElementById("tf_endereco").value.trim();
+    dados.bairro = document.getElementById("tf_bairro").value.trim();
+    dados.cidade = document.getElementById("tf_cidade").value.trim();
+  }
+
+  if (tipoSelecionado === "Obra") {
+    dados.motivo = document.getElementById("tf_motivo").value.trim();
+    dados.destino = document.getElementById("tf_destino").value.trim();
+    dados.clienteObra = document.getElementById("tf_clienteObra").value.trim();
+    dados.saida = document.getElementById("tf_saida").value;
+    dados.volta = document.getElementById("tf_volta").value;
+  }
+
+  await addDoc(tarefasRef, dados);
+
+  const resumo = tipoSelecionado === "Obra"
+    ? `${dados.destino || dados.motivo}`
+    : `${dados.cliente} — porte ${dados.porte}`;
+  await registrarNotificacao(`${currentUser.nome} cadastrou ${tipoSelecionado.toLowerCase() === "obra" ? "uma visita em obra" : "uma " + tipoSelecionado.toLowerCase()} — ${resumo}`);
+  notificarWhatsApp(`${TIPO_ICONE[tipoSelecionado]} Nova tarefa (${tipoSelecionado}) cadastrada por ${currentUser.nome}\n${resumo}\nData: ${formatarData(dados.data)}`);
+
+  resetarModalTarefa();
+  fecharModal("modalTarefa");
+});
+
+onSnapshot(query(tarefasRef, orderBy("criadoEm", "desc")), (snap) => {
+  tarefasCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  document.getElementById("countTarefas").textContent =
+    tarefasCache.filter((t) => t.status !== STATUS_FINAL[t.tipo]).length;
+  renderTarefas();
+  renderHistorico();
+});
+
+document.getElementById("filtrosTipo").addEventListener("click", (e) => {
+  const chip = e.target.closest(".filter-chip");
+  if (!chip) return;
+  document.querySelectorAll("#filtrosTipo .filter-chip").forEach((c) => c.classList.remove("active"));
+  chip.classList.add("active");
+  filtroTipoAtual = chip.dataset.tipo;
+  renderTarefas();
+});
 
 document.getElementById("filtrosHistorico").addEventListener("click", (e) => {
   const chip = e.target.closest(".filter-chip");
@@ -261,53 +177,86 @@ document.getElementById("filtrosHistorico").addEventListener("click", (e) => {
   renderHistorico();
 });
 
-function renderHistorico() {
-  const lista = document.getElementById("listaHistorico");
-  if (!lista) return;
+function podeAtualizarStatus(item) {
+  if (currentUser.papel === "admin") return true;
+  if (item.tipo === "Obra") return item.responsavel === currentUser.nome || currentUser.papel === "estoque";
+  return currentUser.papel === "estoque";
+}
 
-  const entregasFeitas = entregasCache
-    .filter((e) => e.status === "Entregue")
-    .map((e) => ({ ...e, _tipo: "entrega" }));
-  const obraFeitas = obraCache
-    .filter((o) => o.status === "Concluída")
-    .map((o) => ({ ...o, _tipo: "obra" }));
+function renderItemCard(it, finalizada) {
+  const flow = STATUS_FLOWS[it.tipo] || [it.status];
+  const statusClasse = "status-" + it.status.toLowerCase().replace(/\s/g, "");
+  const porteClasse = it.porte === "Pequena" ? "pequena" : it.porte === "Média" ? "media" : it.porte === "Grande" ? "grande" : null;
 
-  let itens = [...entregasFeitas, ...obraFeitas];
-  if (filtroHistoricoAtual !== "todos") itens = itens.filter((i) => i._tipo === filtroHistoricoAtual);
+  let titulo, meta;
+  if (it.tipo === "Obra") {
+    titulo = it.destino || it.motivo;
+    const horario = [it.saida && `saída ${it.saida}`, it.volta && `volta ${it.volta}`].filter(Boolean).join(" · ");
+    meta = [it.motivo, it.clienteObra, it.data && formatarData(it.data), horario].filter(Boolean).join(" · ");
+  } else {
+    titulo = it.cliente;
+    meta = [it.endereco, it.bairro, it.cidade, it.data && formatarData(it.data)].filter(Boolean).join(" · ") ||
+      (it.data ? formatarData(it.data) : "");
+  }
 
-  itens.sort((a, b) => (b.criadoEm?.toMillis?.() || 0) - (a.criadoEm?.toMillis?.() || 0));
+  const acoes = (!finalizada && podeAtualizarStatus(it))
+    ? `<select class="status-select" data-id="${it.id}">
+        ${flow.map((s) => `<option value="${s}" ${s === it.status ? "selected" : ""}>${s}</option>`).join("")}
+      </select>`
+    : `<span class="status-badge ${statusClasse}">${escapeHtml(it.status)}</span>`;
 
-  document.getElementById("countHistorico").textContent = entregasFeitas.length + obraFeitas.length;
+  const bulb = porteClasse ? `<div class="porte-bulb ${porteClasse}" title="Porte: ${it.porte}"></div>` : `<div style="font-size:18px;line-height:1;">${TIPO_ICONE[it.tipo]}</div>`;
+
+  return `
+    <div class="item-card" style="grid-template-columns: auto 1fr auto;">
+      ${bulb}
+      <div class="item-main">
+        <div class="cliente">${TIPO_ICONE[it.tipo]} ${escapeHtml(titulo || "(sem título)")}</div>
+        <div class="meta">${escapeHtml(meta)}</div>
+        ${it.observacao ? `<div class="obs">${escapeHtml(it.observacao)}</div>` : ""}
+        <div class="tags">
+          <span class="tag">${it.tipo}</span>
+          <span class="tag">${escapeHtml(it.responsavel)}</span>
+          ${it.telefone ? `<span class="tag">${escapeHtml(it.telefone)}</span>` : ""}
+        </div>
+      </div>
+      <div class="item-actions">${acoes}</div>
+    </div>`;
+}
+
+function renderTarefas() {
+  const lista = document.getElementById("listaTarefas");
+  const ativas = tarefasCache.filter((t) => t.status !== STATUS_FINAL[t.tipo]);
+  const itens = filtroTipoAtual === "todos" ? ativas : ativas.filter((t) => t.tipo === filtroTipoAtual);
 
   if (itens.length === 0) {
-    lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nada no histórico ainda.</p></div>`;
+    lista.innerHTML = `<div class="empty-state"><div class="login-bulb" style="width:30px;height:30px;display:inline-block;"></div><p>Nenhuma tarefa por aqui.</p></div>`;
     return;
   }
 
-  lista.innerHTML = itens.map((it) => {
-    if (it._tipo === "entrega") {
-      const porteClasse = it.porte === "Pequena" ? "pequena" : it.porte === "Média" ? "media" : "grande";
-      return `
-        <div class="item-card" style="grid-template-columns: auto 1fr auto;">
-          <div class="porte-bulb ${porteClasse}" title="Porte: ${it.porte}"></div>
-          <div class="item-main">
-            <div class="cliente">${escapeHtml(it.cliente)}</div>
-            <div class="meta">${[it.endereco, it.bairro, it.cidade].filter(Boolean).join(" · ") || "Endereço não informado"} ${it.dataPrevista ? "· " + formatarData(it.dataPrevista) : ""}</div>
-            <div class="tags"><span class="tag">Entrega</span><span class="tag">${escapeHtml(it.vendedor)}</span></div>
-          </div>
-          <div class="item-actions"><span class="status-badge status-entregue">Entregue</span></div>
-        </div>`;
-    }
-    return `
-      <div class="item-card" style="grid-template-columns: 1fr auto;">
-        <div class="item-main">
-          <div class="cliente">${escapeHtml(it.destino || it.motivo)}</div>
-          <div class="meta">${escapeHtml(it.motivo)} ${it.clienteObra ? "· " + escapeHtml(it.clienteObra) : ""} ${it.data ? "· " + formatarData(it.data) : ""}</div>
-          <div class="tags"><span class="tag">Visita</span><span class="tag">${escapeHtml(it.responsavel)}</span></div>
-        </div>
-        <div class="item-actions"><span class="status-badge status-concluida">Concluída</span></div>
-      </div>`;
-  }).join("");
+  lista.innerHTML = itens.map((it) => renderItemCard(it, false)).join("");
+
+  lista.querySelectorAll(".status-select").forEach((sel) => {
+    sel.addEventListener("change", async () => {
+      await updateDoc(doc(db, "tarefas", sel.dataset.id), { status: sel.value });
+      await registrarNotificacao(`${currentUser.nome} atualizou uma tarefa para "${sel.value}"`);
+    });
+  });
+}
+
+function renderHistorico() {
+  const lista = document.getElementById("listaHistorico");
+  const feitas = tarefasCache.filter((t) => t.status === STATUS_FINAL[t.tipo]);
+  const itens = filtroHistoricoAtual === "todos" ? feitas : feitas.filter((t) => t.tipo === filtroHistoricoAtual);
+
+  document.getElementById("countHistorico").textContent = feitas.length;
+
+  if (itens.length === 0) {
+    lista.innerHTML = `<div class="empty-state"><p>Nada no histórico ainda.</p></div>`;
+    return;
+  }
+
+  lista.innerHTML = itens.map((it) => renderItemCard(it, true)).join("");
 }
 
 /* ===================== NOTIFICAÇÕES ===================== */
@@ -340,9 +289,7 @@ function renderNotificacoes() {
     </div>`).join("");
 }
 
-function getLastSeen() {
-  return parseInt(localStorage.getItem(LAST_SEEN_KEY) || "0", 10);
-}
+function getLastSeen() { return parseInt(localStorage.getItem(LAST_SEEN_KEY) || "0", 10); }
 
 function atualizarBadge() {
   const lastSeen = getLastSeen();
@@ -383,7 +330,7 @@ function notificarWhatsApp(texto) {
 /* ===================== HELPERS ===================== */
 function escapeHtml(str) {
   if (!str) return "";
-  return str.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+  return String(str).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
 }
 
 function formatarData(isoStr) {
@@ -396,8 +343,4 @@ function formatarDataHora(ts) {
   if (!ts || !ts.toDate) return "agora";
   const d = ts.toDate();
   return d.toLocaleDateString("pt-BR") + " às " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function iniciarApp() {
-  // ponto de extensão futuro (ex: carregar preferências do usuário)
 }
