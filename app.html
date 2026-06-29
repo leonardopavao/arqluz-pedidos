@@ -31,6 +31,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="entregas">Entregas <span class="tab-count" id="countEntregas">0</span></button>
   <button class="tab-btn" data-tab="obra">Visita em obra <span class="tab-count" id="countObra">0</span></button>
+  <button class="tab-btn" data-tab="historico">Histórico <span class="tab-count" id="countHistorico">0</span></button>
   <button class="tab-btn" data-tab="notificacoes">Notificações <span class="tab-count" id="countNotif">0</span></button>
 </nav>
 
@@ -46,7 +47,6 @@
       <button class="filter-chip" data-status="Novo">Novo</button>
       <button class="filter-chip" data-status="Visto">Visto</button>
       <button class="filter-chip" data-status="Em rota">Em rota</button>
-      <button class="filter-chip" data-status="Entregue">Entregue</button>
     </div>
     <div class="card-list" id="listaEntregas"></div>
   </div>
@@ -63,9 +63,23 @@
       <button class="filter-chip active" data-status="todos">Todos</button>
       <button class="filter-chip" data-status="Agendada">Agendada</button>
       <button class="filter-chip" data-status="Em andamento">Em andamento</button>
-      <button class="filter-chip" data-status="Concluída">Concluída</button>
     </div>
     <div class="card-list" id="listaObra"></div>
+  </div>
+</section>
+
+<!-- ===== HISTÓRICO ===== -->
+<section class="tab-panel" id="panel-historico">
+  <div class="panel-body">
+    <div class="panel-toolbar">
+      <h2>Histórico — entregas e visitas concluídas</h2>
+    </div>
+    <div class="filter-row" id="filtrosHistorico">
+      <button class="filter-chip active" data-tipo="todos">Todos</button>
+      <button class="filter-chip" data-tipo="entrega">Entregas</button>
+      <button class="filter-chip" data-tipo="obra">Visitas</button>
+    </div>
+    <div class="card-list" id="listaHistorico"></div>
   </div>
 </section>
 
