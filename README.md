@@ -1,7 +1,20 @@
 # Arq Luz · Pedidos
 
-Site para os vendedores cadastrarem pedidos de entrega (com porte P/M/G) e visitas em obra
-(uso do carro), com visualização em tempo real para todo o time e aba de notificações.
+Site para os vendedores cadastrarem **entregas**, **visitas em obra** (uso do carro) e
+**retiradas na loja**, tudo numa lista só — assim dá pra acompanhar o uso do carro e o que
+o estoque precisa preparar, com visualização em tempo real pra todo o time e aba de notificações.
+
+## Como funciona
+Cada tarefa tem um **tipo**: 📦 Entrega, 🚗 Visita em obra, ou 🏬 Retirada na loja.
+Todas aparecem juntas na aba "Tarefas" (com filtro por tipo, se quiser ver separado), e somem
+automaticamente pra aba "Histórico" quando concluídas:
+- Entrega → Novo → Visto → Em rota → **Entregue**
+- Visita em obra → Agendada → Em andamento → **Concluída**
+- Retirada na loja → Novo → Pronto para retirada → **Retirado**
+
+Quem pode mudar o status: o time de **estoque** e o **admin** sempre podem; numa visita em
+obra, quem está marcado como responsável também pode atualizar o próprio status (já que é
+quem está usando o carro).
 
 ## O que falta configurar (passo a passo)
 
