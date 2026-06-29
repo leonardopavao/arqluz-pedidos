@@ -8,7 +8,7 @@ o estoque precisa preparar, com visualização em tempo real pra todo o time e a
 Cada tarefa tem um **tipo**: 📦 Entrega, 🚗 Visita em obra, ou 🏬 Retirada na loja.
 Todas aparecem juntas na aba "Tarefas" (com filtro por tipo, se quiser ver separado), e somem
 automaticamente pra aba "Histórico" quando concluídas:
-- Entrega → Novo → Visto → Em rota → **Entregue**
+- Entrega → Novo → Visto → Em separação → Separado → **Entregue**
 - Visita em obra → Agendada → Em andamento → **Concluída**
 - Retirada na loja → Novo → Pronto para retirada → **Retirado**
 
