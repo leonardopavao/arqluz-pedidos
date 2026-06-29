@@ -368,8 +368,12 @@ button { font-family: inherit; cursor: pointer; }
 .status-novo { background: rgba(245,166,35,0.18); color: var(--accent); }
 .status-visto { background: rgba(120,140,220,0.18); color: #93a4ec; }
 .status-emrota, .status-emandamento { background: rgba(95,184,120,0.16); color: var(--porte-pequena); }
-.status-entregue, .status-concluida { background: var(--surface); color: var(--text-faint); border: 1px solid var(--border); }
+.status-entregue, .status-concluída, .status-retirado { background: var(--surface); color: var(--text-faint); border: 1px solid var(--border); }
 .status-agendada { background: rgba(245,166,35,0.18); color: var(--accent); }
+.status-prontopararetirada { background: rgba(120,140,220,0.18); color: #93a4ec; }
+
+#tipo_options .porte-opt { padding: 14px 8px; font-size: 12.5px; line-height: 1.6; }
+.campo-grupo { border-top: 1px dashed var(--border); padding-top: 14px; margin-top: 14px; }
 
 .item-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 .status-select {
