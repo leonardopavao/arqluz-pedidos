@@ -367,7 +367,8 @@ button { font-family: inherit; cursor: pointer; }
 }
 .status-novo { background: rgba(245,166,35,0.18); color: var(--accent); }
 .status-visto { background: rgba(120,140,220,0.18); color: #93a4ec; }
-.status-emrota, .status-emandamento { background: rgba(95,184,120,0.16); color: var(--porte-pequena); }
+.status-emseparação { background: rgba(120,140,220,0.18); color: #93a4ec; }
+.status-separado, .status-emandamento { background: rgba(95,184,120,0.16); color: var(--porte-pequena); }
 .status-entregue, .status-concluída, .status-retirado { background: var(--surface); color: var(--text-faint); border: 1px solid var(--border); }
 .status-agendada { background: rgba(245,166,35,0.18); color: var(--accent); }
 .status-prontopararetirada { background: rgba(120,140,220,0.18); color: #93a4ec; }
